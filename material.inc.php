@@ -22,28 +22,28 @@
  */
 
 
-// $this->suits = [
-//   1 => [
-//     'name' => clienttranslate('Hearts'),
-//     'nameof' => clienttranslate('of Hearts'),
-//     'symbol' => '&hearts;'
-//   ],
+$this->suits = [
+  1 => [
+    'name' => clienttranslate('Hearts'),
+    'nameof' => clienttranslate('of Hearts'),
+    'symbol' => '&hearts;'
+  ],
 
-//   2 => [
-//     'name' => clienttranslate('Clubs'),
-//     'nameof' => clienttranslate('of Clubs'),
-//     'symbol' => '&clubs;',
-//   ] ,
+  2 => [
+    'name' => clienttranslate('Clubs'),
+    'nameof' => clienttranslate('of Clubs'),
+    'symbol' => '&clubs;',
+  ] ,
 
-//   3 => [
-//     'name' => clienttranslate('Diamonds'),
-//     'nameof' => clienttranslate('of Diamonds'),
-//     'symbol' => '&diams;'
-//   ],
+  3 => [
+    'name' => clienttranslate('Diamonds'),
+    'nameof' => clienttranslate('of Diamonds'),
+    'symbol' => '&diams;'
+  ],
 
-//   4 => [
-//     'name' => clienttranslate('Spades'),
-//     'nameof' => clienttranslate('of Spades'),
-//     'symbol' => '&spades;'
-//   ],
-// ];
+  4 => [
+    'name' => clienttranslate('Spades'),
+    'nameof' => clienttranslate('of Spades'),
+    'symbol' => '&spades;'
+  ],
+];

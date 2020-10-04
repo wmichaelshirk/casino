@@ -49,7 +49,7 @@ function (dojo, declare) {
             "getAllDatas" PHP method.
         */
         setup: function(gamedata) {
-
+            console.log(gamedata)
             // Setting up player boards
             for (let player_id in gamedata.players) {
                 let player = gamedata.players[player_id]
