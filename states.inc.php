@@ -20,35 +20,36 @@
    Game state machine is a tool used to facilitate game developpement by doing
    common stuff that can be set up in a very easy way from this configuration file.
 
-   Please check the BGA Studio presentation about game state to understand this, and associated documentation.
+   Please check the BGA Studio presentation about game state to understand this, 
+   and associated documentation.
 
    Summary:
 
    States types:
    _ activeplayer: in this type of state, we expect some action from the active
-    player.
+        player.
    _ multipleactiveplayer: in this type of state, we expect some action from
-    multiple players (the active players)
+        multiple players (the active players)
    _ game: this is an intermediary state where we don't expect any actions from
-    players. Your game logic must decide what is the next game state.
+        players. Your game logic must decide what is the next game state.
    _ manager: special type for initial and final state
 
    Arguments of game states:
    _ name: the name of the GameState, in order you can recognize it on your own
-    code.
+        code.
    _ description: the description of the current game state is always displayed
      in the action status bar on the top of the game. Most of the time this is
      useless for game state with "game" type.
    _ descriptionmyturn: the description of the current game state when it's
-    your turn.
+        your turn.
    _ type: defines the type of game states (activeplayer / multipleactiveplayer
-    / game / manager)
+        / game / manager)
    _ action: name of the method to call when this game state become the current
-    game state. Usually, the action method is prefixed by "st" (ex:
-    "stMyGameStateName").
+        game state. Usually, the action method is prefixed by "st" (ex:
+        "stMyGameStateName").
    _ possibleactions: array that specify possible player actions on this step.
     It allows you to use "checkAction" method on both client side (Javacript:
-    this.checkAction) and server side (PHP: self::checkAction).
+        this.checkAction) and server side (PHP: self::checkAction).
    _ transitions: the transitions are the possible paths to go from a game state
     to another. You must name transitions in order to use transition names in
         "nextState" PHP method, and use IDs to specify the next game state for
@@ -71,18 +72,8 @@ $machinestates = [
         "description" => "",
         "type" => "manager",
         "action" => "stGameSetup",
-        "transitions" => ["" => 2]
+        "transitions" => ["" => 10]
     ],
-
-    2 => [
-        "name" => "playerTurn",
-        "description" => clienttranslate('${actplayer} must play a card or pass'),
-        "descriptionmyturn" => clienttranslate('${you} must play a card or pass'),
-        "type" => "activeplayer",
-        "possibleactions" => array( "playCard", "pass" ),
-        "transitions" => array( "playCard" => 2, "pass" => 2 )
-    ],
-
 
     10 => [
         "name" => "newHand",
@@ -93,35 +84,35 @@ $machinestates = [
         "transitions" => ["" => 11]
     ],
 
-    // 11 => [
-    //     "name" => "deal",
-    //     "description" => "",
-    //     "type" => "game",
-    //     "action" => "stDeal",
-    //     "updateGameProgression" => true,
-    //     "transitions" => ["" => 12]
-    // ],
+    11 => [
+        "name" => "deal",
+        "description" => "",
+        "type" => "game",
+        "action" => "stDeal",
+        "updateGameProgression" => false,
+        "transitions" => ["" => 12]
+    ],
 
-    // 12 => [
-    //     "name" => "playerTurn",
-    //     "description" => clienttranslate('${actplayer} must play'),
-    //     "descriptionmyturn" => clienttranslate('${you} must play'),
-    //     "type" => "activeplayer",
-    //     "possibleactions" => ["capture", "build", "trail"],
-    //     "transitions" => ["" => 13]
-    // ],
+    12 => [
+        "name" => "playerTurn",
+        "description" => clienttranslate('${actplayer} must play'),
+        "descriptionmyturn" => clienttranslate('${you} must play'),
+        "type" => "activeplayer",
+        "possibleactions" => ["capture", "build", "trail"],
+        "transitions" => ["" => 13]
+    ],
 
-    // 13 => [
-    //     "name" => "nextPlayer",
-    //     "description" => "",
-    //     "type" => "game",
-    //     "action" => "stNextPlayer",
-    //     "transitions" => [
-    //         "nextDeal" => 11,
-    //         "nextPlayer" => 12,
-    //         "endHand" => 14
-    //     ]
-    // ], 
+    13 => [
+        "name" => "nextPlayer",
+        "description" => "",
+        "type" => "game",
+        "action" => "stNextPlayer",
+        "transitions" => [
+            "nextDeal" => 11,
+            "nextPlayer" => 12,
+            "endHand" => 14
+        ]
+    ], 
 
     // 14 => [
     //     "name" => "endHand",

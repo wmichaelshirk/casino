@@ -27,10 +27,11 @@
     Please REMOVE this comment before publishing your game on BGA
 -->
 
-
 <div id="table">
 </div>
-<div id="myhand">
+<div class="whiteblock">
+    <div id="myhand">
+    </div>
 </div>
 
 <script type="text/javascript">

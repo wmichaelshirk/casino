@@ -24,6 +24,7 @@ class casino extends Table {
             "dealer_id" => 10,
             "eldest_player_id" => 11,
             "deal_round" => 12,
+            "rounds_per_hand" => 13,
         ]);
         $this->cards = self::getNew("module.common.deck");
         $this->cards->init("card");
@@ -68,11 +69,10 @@ class casino extends Table {
         /************ Start the game initialization *****/
 
         // Init global values with their initial values
-        $dealer_id = self::getActivePlayerId();
-        $eldest_player_id = self::getPlayerAfter($dealer_id);
-        self::setGameStateInitialValue('dealer_id', $dealer_id);
-        self::setGameStateInitialValue('eldest_player_id', $eldest_player_id);
+        self::setGameStateInitialValue('dealer_id', 0);
+        self::setGameStateInitialValue('eldest_player_id', 0);
         self::setGameStateInitialValue('deal_round', 0);
+        self::setGameStateInitialValue("rounds_per_hand", 0);
 
         // Init game statistics
         // (note: statistics used in this file must be defined in your stats.inc.php file)
@@ -91,7 +91,13 @@ class casino extends Table {
         $this->cards->createCards($cards, 'deck');
 
         // Activate first player (which is in general a good idea :) )
-        $this->activeNextPlayer();
+        $dealer_id = $this->activeNextPlayer();
+        $eldest_player_id = self::getPlayerAfter($dealer_id);
+        $numberOfPlayers = self::getPlayersNumber();
+        $rounds = (count($cards) - 4) / ($numberOfPlayers * 4);
+        self::setGameStateValue('dealer_id', $dealer_id);
+        self::setGameStateValue('eldest_player_id', $eldest_player_id);
+        self::setGameStateValue("rounds_per_hand", $rounds);
 
         /************ End of the game initialization *****/
     }
@@ -109,7 +115,7 @@ class casino extends Table {
         $result = array();
 
         // !! We must only return informations visible by this player !!
-        $current_player_id = self::getCurrentPlayerId();
+        $currentPlayerId = self::getCurrentPlayerId();
 
         // Get information about players
         // Note: you can retrieve some extra field you added for "player" table
@@ -119,6 +125,14 @@ class casino extends Table {
 
         // TODO: Gather all information about current game situation
         // (visible by player $current_player_id).
+
+        // Cards in player hand
+        $result['hand'] = $this->cards->getCardsInLocation('hand', $currentPlayerId);
+
+        // Cards played on the table
+        $result['cardsontable'] = $this->cards->getCardsInLocation('cardsontable');
+
+        $result['dealerId'] = self::getGameStateValue('dealer_id');
 
         return $result;
     }
@@ -144,10 +158,30 @@ class casino extends Table {
 //////////// Utility functions
 ////////////
 
-    /*
-        In this space, you can put any utility methods useful for your game logic
-    */
 
+    function getPlayerName ($player_id) {
+        $players = self::loadPlayersBasicInfos();
+        return $players[$player_id]['player_name'];
+    }
+
+    function assertCardPlay($cardId) {
+        $playerId = self::getActivePlayerId();
+        $playerHand = $this->cards->getCardsInLocation('hand', $playerId);
+
+        $isInHand = false;
+        $card = null;
+
+        foreach($playerHand as $currentCard) {
+            if ($currentCard['id'] == $cardId) {
+                $isInHand = true;
+                $card = $currentCard;
+            }
+        }
+
+        if (!$isInHand) {
+            throw new BgaUserException(self::_("This card is not in your hand"));
+        }
+    }
 
 
 //////////////////////////////////////////////////////////////////////////////
@@ -159,31 +193,23 @@ class casino extends Table {
         (note: each method below must match an input method in casino.action.php)
     */
 
-    /*
+    function trailCard($cardId) {
+        self::checkAction('trail');
+        $this->assertCardPlay($cardId);
+        $this->cards->moveCard($cardId, 'cardsontable');
 
-    Example:
+        $card = $this->cards->getCard($cardId);
 
-    function playCard( $card_id )
-    {
-        // Check that this is the player's turn and that it is a "possible action" at this game state (see states.inc.php)
-        self::checkAction( 'playCard' );
-
-        $player_id = self::getActivePlayerId();
-
-        // Add your game logic to play a card there
-        ...
-
-        // Notify all players about the card played
-        self::notifyAllPlayers( "cardPlayed", clienttranslate( '${player_name} plays ${card_name}' ), array(
-            'player_id' => $player_id,
-            'player_name' => self::getActivePlayerName(),
-            'card_name' => $card_name,
-            'card_id' => $card_id
-        ) );
-
+        self::notifyAllPlayers('trailCard',
+            clienttranslate('${player_name} trails ${card_name}'), [
+            'player_name' => $this->getActivePlayerName(),
+            'player_id' => $this->getActivePlayerId(),
+            'card' => $card,
+            'card_name' => '',
+        ]);
+        $this->gamestate->nextState();
     }
 
-    */
 
 
 //////////////////////////////////////////////////////////////////////////////
@@ -218,22 +244,95 @@ class casino extends Table {
 ////////////
 
     /*
-        Here, you can create methods defined as "game state actions" (see "action" property in states.inc.php).
-        The action method of state X is called everytime the current game state is set to X.
+        Here, you can create methods defined as "game state actions" (see
+        "action" property in states.inc.php).
+        The action method of state X is called everytime the current game
+        state is set to X.
     */
+
 
     /*
+     * 10 - Start a new hand -
+     * Take back all cards (from any location) to deck.
+     */
+    function stNewHand() {
+        $this->cards->moveAllCardsInLocation(null, 'deck');
+        $this->cards->shuffle('deck');
+        self::setGameStateValue('deal_round', 0);
 
-    Example for game state "MyGameState":
+        // TODO _advance_ dealer and eldest
+        $eldest = self::getGameStateValue('eldest_player_id');
+        $dealer = self::getGameStateValue('dealer_id');
 
-    function stMyGameState()
-    {
-        // Do some stuff ...
+        self::notifyAllPlayers('newDeal',
+            clienttranslate('<hr/>${player_name} is the next dealer<hr/>'), [
+            'dealer_id' => $dealer,
+            'player_name' => self::getPlayerName($dealer),
+            'eldest' => $eldest
+        ]);
 
-        // (very often) go to another gamestate
-        $this->gamestate->nextState( 'some_gamestate_transition' );
+        $this->gamestate->changeActivePlayer($dealer);
+        $this->gamestate->nextState();
     }
-    */
+
+
+    /*
+     * 11 - Deal out a round of cards
+     */
+    function stDeal () {
+        $players = self::loadPlayersBasicInfos();
+        $deal = self::incGameStateValue('deal_round', 1);
+        $dealer = self::getGameStateValue('dealer_id');
+
+        foreach (range(1, 2) as $_) {
+            foreach ($players as $playerId => $player) {
+                $cards = $this->cards->pickCards(2, 'deck', $playerId);
+                $this->notifyPlayer($playerId, 'newCards', '', [
+                    'cards' => $cards,
+                    'dealerId' => $dealer
+                ]);
+            }
+            if ($deal === 1) {
+                $cards = $this->cards->pickCardsForLocation(2, 'deck', 'cardsontable');
+                self::notifyAllPlayers('deal', '', [
+                    'dealerId' => $dealer,
+                    'cards' => $cards
+                ]);
+            }
+        }
+
+        if (self::getGameStateValue('rounds_per_hand') == $deal) {
+            self::notifyAllPlayers('say', '', [
+                'player_id' => $dealer,
+                'msg' => 'last'
+            ]);
+        }
+
+        self::activeNextPlayer();
+        $this->gamestate->nextState();
+    }
+
+    /*
+     * 11 - Deal out a round of cards
+     */
+    function stNextPlayer () {
+        $round = self::getGameStateValue('deal_round');
+        $lastRound = self::getGameStateValue('rounds_per_hand') == $round;
+        $endOfRound = $this->cards->countCardInLocation('hand') == 0;
+
+        if ($endOfRound) {
+            if ($lastRound) {
+                $this->gamestate->nextState("endHand");
+            } else {
+                $this->gamestate->nextState("nextDeal");
+            }
+            return;
+        }
+        self::activeNextPlayer();
+        $this->gamestate->nextState("nextPlayer");
+    }
+
+
 
 //////////////////////////////////////////////////////////////////////////////
 //////////// Zombie
@@ -242,14 +341,17 @@ class casino extends Table {
     /*
         zombieTurn:
 
-        This method is called each time it is the turn of a player who has quit the game (= "zombie" player).
-        You can do whatever you want in order to make sure the turn of this player ends appropriately
-        (ex: pass).
+        This method is called each time it is the turn of a player who has quit
+        the game (= "zombie" player). You can do whatever you want in order to
+        make sure the turn of this player ends appropriately (ex: pass).
 
-        Important: your zombie code will be called when the player leaves the game. This action is triggered
-        from the main site and propagated to the gameserver from a server, not from a browser.
-        As a consequence, there is no current player associated to this action. In your zombieTurn function,
-        you must _never_ use getCurrentPlayerId() or getCurrentPlayerName(), otherwise it will fail with a "Not logged" error message.
+        Important: your zombie code will be called when the player leaves the
+        game. This action is triggered from the main site and propagated to the
+        gameserver from a server, not from a browser. As a consequence, there
+        is no current player associated to this action. In your zombieTurn
+        function, you must _never_ use getCurrentPlayerId() or
+        getCurrentPlayerName(), otherwise it will fail with a "Not logged"
+        error message.
     */
 
     function zombieTurn ($state, $active_player) {
