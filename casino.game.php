@@ -25,6 +25,8 @@ class casino extends Table {
             "eldest_player_id" => 11,
             "deal_round" => 12,
             "rounds_per_hand" => 13,
+
+            "game_length" => 100,
         ]);
         $this->cards = self::getNew("module.common.deck");
         $this->cards->init("card");
@@ -38,18 +40,20 @@ class casino extends Table {
         setupNewGame:
 
         This method is called only once, when a new game is launched.
-        In this method, you must setup the game according to the game rules, so that
-        the game is ready to be played.
+        In this method, you must setup the game according to the game rules, so 
+        that the game is ready to be played.
     */
     protected function setupNewGame($players, $options = []) {
         // Set the colors of the players with HTML color code
         // The default below is red/green/blue/orange/brown
-        // The number of colors defined here must correspond to the maximum number of players allowed for the gams
+        // The number of colors defined here must correspond to the maximum 
+        // number of players allowed for the gams
         $gameinfos = self::getGameinfos();
         $default_colors = $gameinfos['player_colors'];
 
         // Create players
-        // Note: if you added some extra field on "player" table in the database (dbmodel.sql), you can initialize it there.
+        // Note: if you added some extra field on "player" table in the database 
+        // (dbmodel.sql), you can initialize it there.
         $sql = "INSERT INTO player (" .
             "player_id, player_color, player_canal, player_name, player_avatar" .
             ") VALUES ";
@@ -75,9 +79,12 @@ class casino extends Table {
         self::setGameStateInitialValue("rounds_per_hand", 0);
 
         // Init game statistics
-        // (note: statistics used in this file must be defined in your stats.inc.php file)
-        //self::initStat( 'table', 'table_teststat1', 0 );    // Init a table statistics
-        //self::initStat( 'player', 'player_teststat1', 0 );  // Init a player statistics (for all players)
+        // (note: statistics used in this file must be defined in your
+        // stats.inc.php file)
+        // Init a table statistics
+        //self::initStat( 'table', 'table_teststat1', 0 );
+        // Init a player statistics (for all players
+        //self::initStat( 'player', 'player_teststat1', 0 ); )
 
         // TODO: setup the initial game situation here
         // Create cards
@@ -105,14 +112,18 @@ class casino extends Table {
     /*
         getAllDatas:
 
-        Gather all informations about current game situation (visible by the current player).
+        Gather all informations about current game situation (visible by the
+        current player).
 
-        The method is called each time the game interface is displayed to a player, ie:
+        The method is called each time the game interface is displayed to a
+        player, ie:
         _ when the game starts
         _ when a player refreshes the game page (F5)
     */
     protected function getAllDatas() {
         $result = array();
+
+        $result['suits'] = $this->suits;
 
         // !! We must only return informations visible by this player !!
         $currentPlayerId = self::getCurrentPlayerId();
@@ -141,16 +152,20 @@ class casino extends Table {
         getGameProgression:
 
         Compute and return the current game progression.
-        The number returned must be an integer beween 0 (=the game just started) and
-        100 (= the game is finished or almost finished).
+        The number returned must be an integer beween 0 (=the game just started) 
+        and 100 (= the game is finished or almost finished).
 
-        This method is called each time we are in a game state with the "updateGameProgression" property set to true
-        (see states.inc.php)
+        This method is called each time we are in a game state with the 
+        "updateGameProgression" property set to true (see states.inc.php)
     */
     function getGameProgression() {
-        // TODO: compute and return the game progression
+        $newScores = self::getCollectionFromDb("SELECT player_score FROM player", true);
+        $highScore = max(array_keys($newScores));
+        $targetScore = self::getGameStateValue('game_length');
 
-        return 0;
+        // TODO percent of scores/target PLUS
+        // cards-to-play. So, each play is 1/48th of ... 1 point?
+        return (int) ((100 * $highScore) / $targetScore);
     }
 
 
@@ -183,13 +198,41 @@ class casino extends Table {
         }
     }
 
+    function assertTableCards($cardIds) {
+        $tableCards = array_keys($this->cards->getCardsInLocation('cardsontable'));
+
+        if (count(array_diff($cardIds, $tableCards))) {
+            throw new BgaUserException(self::_("One or more cards are not on the table"));
+        }
+    }
+
+    function assertSum($target, $cardIds) {
+        $cards = $this->cards->getCards($cardIds);
+        $values = array_map(function ($num) {
+            return $num == 14 ? 1 : $num;
+        }, array_column($cards, 'type_arg'));
+        $sum = array_sum($values);
+
+        $error = self::_("The selected cards do not add up to capture value: $sum");
+        if ($target == 14) {
+            if ($sum % $target > 0 && count($cardIds) != $sum) {
+                throw new BgaUserException($error);
+            }
+        } else {
+            if ($sum % $target > 0) {
+                throw new BgaUserException($error);
+            }
+        }
+    }
+
 
 //////////////////////////////////////////////////////////////////////////////
 //////////// Player actions
 ////////////
 
     /*
-        Each time a player is doing some game action, one of the methods below is called.
+        Each time a player is doing some game action, one of the methods below 
+        is called.
         (note: each method below must match an input method in casino.action.php)
     */
 
@@ -211,23 +254,53 @@ class casino extends Table {
     }
 
 
+    function captureCards($cardId, $capturedCards) {
+        // valid move and values?
+        self::checkAction('capture');
+        $this->assertCardPlay($cardId);
+        $this->assertTableCards($capturedCards);
+
+        $view = implode(',', $capturedCards);
+        self::notifyAllPlayers('log', "foo $view", []);
+
+
+        // valid capture?
+        $card = $this->cards->getCard($cardId);
+        $this->assertSum($card['type_arg'], $capturedCards);
+        
+        $playerId = self::getActivePlayerId();
+        $this->cards->moveCards($capturedCards, 'cardswon', $playerId);
+        $this->cards->moveCard($cardId, 'cardswon', $playerId);
+
+        $captured = $this->cards->getCards($capturedCards);
+        self::notifyAllPlayers('captureCards',
+            clienttranslate('${player_name} captures ${card_names} with ${card_name}'), [
+            'player_name' => $this->getActivePlayerName(),
+            'player_id' => $this->getActivePlayerId(),
+            'card' => $card,
+            'card_name' => '',
+            'cards' => $captured,
+            'card_names' => ''
+        ]);
+        $this->gamestate->nextState();
+    }
+
 
 //////////////////////////////////////////////////////////////////////////////
 //////////// Game state arguments
 ////////////
 
     /*
-        Here, you can create methods defined as "game state arguments" (see "args" property in states.inc.php).
-        These methods function is to return some additional information that is specific to the current
-        game state.
+        Here, you can create methods defined as "game state arguments" (see
+        "args" property in states.inc.php). These methods function is to return
+        some additional information that is specific to the current game state.
     */
 
     /*
 
     Example for game state "MyGameState":
 
-    function argMyGameState()
-    {
+    function argMyGameState () {
         // Get some values from the current game situation in database...
 
         // return values:
@@ -313,7 +386,7 @@ class casino extends Table {
     }
 
     /*
-     * 11 - Deal out a round of cards
+     * 13 - Determine if the round or hand are done
      */
     function stNextPlayer () {
         $round = self::getGameStateValue('deal_round');
@@ -332,6 +405,25 @@ class casino extends Table {
         $this->gamestate->nextState("nextPlayer");
     }
 
+
+    /*
+     * 14 - Update scores and determine if the game is done
+     */
+    function stEndHand () {
+        // TODO update scores
+
+        $newScores = self::getCollectionFromDb("SELECT player_score FROM player", true);
+        $highScore = max(array_keys($newScores));
+        $targetScore = self::getGameStateValue('game_length');
+
+        if ($highScore >= $targetScore) {
+            $this->gamestate->nextState("endGame");
+            return;
+        }
+
+        self::activeNextPlayer();
+        $this->gamestate->nextState("nextHand");
+    }
 
 
 //////////////////////////////////////////////////////////////////////////////
@@ -385,11 +477,11 @@ class casino extends Table {
         upgradeTableDb:
 
         You don't have to care about this until your game has been published on BGA.
-        Once your game is on BGA, this method is called everytime the system detects a game running with your old
-        Database scheme.
-        In this case, if you change your Database scheme, you just have to apply the needed changes in order to
-        update the game database and allow the game to continue to run with your new version.
-
+        Once your game is on BGA, this method is called everytime the system 
+        detects a game running with your old Database scheme.
+        In this case, if you change your Database scheme, you just have to apply
+        the needed changes in order to update the game database and allow the 
+        game to continue to run with your new version.
     */
 
     function upgradeTableDb ($from_version) {
@@ -397,23 +489,20 @@ class casino extends Table {
         // For example, if the game was running with a release of your game named "140430-1345",
         // $from_version is equal to 1404301345
 
-        // Example:
-//        if( $from_version <= 1404301345 )
-//        {
-//            // ! important ! Use DBPREFIX_<table_name> for all tables
-//
-//            $sql = "ALTER TABLE DBPREFIX_xxxxxxx ....";
-//            self::applyDbUpgradeToAllDB( $sql );
-//        }
-//        if( $from_version <= 1405061421 )
-//        {
-//            // ! important ! Use DBPREFIX_<table_name> for all tables
-//
-//            $sql = "CREATE TABLE DBPREFIX_xxxxxxx ....";
-//            self::applyDbUpgradeToAllDB( $sql );
-//        }
-//        // Please add your future database scheme changes here
-//
-//
+    // Example:
+    //    if($from_version <= 1404301345) {
+    //        // ! important ! Use DBPREFIX_<table_name> for all tables
+
+    //        $sql = "ALTER TABLE DBPREFIX_xxxxxxx ....";
+    //        self::applyDbUpgradeToAllDB( $sql );
+    //    }
+    //    if ($from_version <= 1405061421) {
+    //        // ! important ! Use DBPREFIX_<table_name> for all tables
+
+    //        $sql = "CREATE TABLE DBPREFIX_xxxxxxx ....";
+    //        self::applyDbUpgradeToAllDB( $sql );
+    //    }
+    //    // Please add your future database scheme changes here
+
     }
 }

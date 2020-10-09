@@ -24,18 +24,18 @@
  */
 
 
-  class action_casino extends APP_GameAction {
+class action_casino extends APP_GameAction {
 
     // Constructor: please do not modify
-   	public function __default() {
-  	    if (self::isArg('notifwindow')) {
+    public function __default() {
+        if (self::isArg('notifwindow')) {
             $this->view = "common_notifwindow";
-  	        $this->viewArgs['table'] = self::getArg( "table", AT_posint, true );
-  	    } else {
+            $this->viewArgs['table'] = self::getArg( "table", AT_posint, true );
+        } else {
             $this->view = "casino_casino";
             self::trace( "Complete reinitialization of board game" );
         }
-  	}
+    }
 
     public function trail() {
         self::setAjaxMode();
@@ -44,6 +44,14 @@
         self::ajaxResponse();
     }
 
+    public function capture() {
+        self::setAjaxMode();
+        $cardId = self::getArg("cardId", AT_posint, true);
+        $arg = self::getArg('capturedCards', AT_numberlist, true);
+        $capturedCards = $arg == '' ? [] : explode(',', $arg);
+        $this->game->captureCards($cardId, $capturedCards);
+        self::ajaxResponse();
+    }
     /*
 
     Example:
@@ -65,6 +73,6 @@
 
     */
 
-  }
+}
 
 

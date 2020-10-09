@@ -3,11 +3,11 @@
  *------
  * BGA framework: © Gregory Isabelli <gisabelli@boardgamearena.com> &
  * Emmanuel Colin <ecolin@boardgamearena.com>
- * casino implementation : © W Michael Shirk <wmichaelshirk@gmail.com>
+ * Casino implementation : © W Michael Shirk <wmichaelshirk@gmail.com>
  *
  * This code has been produced on the BGA studio platform for use on
- * http://boardgamearena.com.
- * See http://en.boardgamearena.com/#!doc/Studio for more information.
+ * http://boardgamearena.com. See http://en.boardgamearena.com/#!doc/Studio 
+ * for more information.
  * -----
  *
  * states.inc.php
@@ -114,13 +114,13 @@ $machinestates = [
         ]
     ], 
 
-    // 14 => [
-    //     "name" => "endHand",
-    //     "description" => "",
-    //     "type" => "game",
-    //     "action" => "stEndHand",
-    //     "transitions" => ["nextHand" => 10, "endGame" => 99]
-    // ],     
+    14 => [
+        "name" => "endHand",
+        "description" => "",
+        "type" => "game",
+        "action" => "stEndHand",
+        "transitions" => ["nextHand" => 10, "endGame" => 99]
+    ],     
 
     // Final state.
     // Please do not modify (and do not overload action/args methods).

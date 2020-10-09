@@ -70,7 +70,7 @@ function (dojo, declare) {
             this.table = new ebg.stock()
             this.table.create(this, $('table'), this.cardwidth, this.cardheight)
             this.table.image_items_per_row = 13
-            this.table.setSelectionMode(1)
+            this.table.setSelectionMode(2)
             this.table.centerItems = true
 
             dojo.connect(this.playerHand, 'onChangeSelection', this,
@@ -175,7 +175,7 @@ function (dojo, declare) {
             if (this.isCurrentPlayerActive()) {
                 switch (stateName) {
                     case 'playerTurn':
-                        this.addActionButton('capture_button', _('Capture'), 'trailCard')
+                        this.addActionButton('capture_button', _('Capture'), 'captureCard')
                         this.addActionButton('trail_button', _('Trail'), 'trailCard')
                         break;
                 }
@@ -259,18 +259,50 @@ function (dojo, declare) {
 
             if (!this.checkAction('trail')) return
             selectedCards = this.playerHand.getSelectedItems()
-            if (selectedCards.length != 1) return
+            if (selectedCards.length != 1) {
+                 this.showMessage(
+                     _('You must select exactly 1 card to trail'), 'error');
+                return;
+            }
 
             this.takeAction('trail', { cardId: selectedCards[0].id })
                 .then(console.log)
                 .catch(console.error)
         },
 
-       onPlayerHandSelectionChanged: function() {
-           const items = this.playerHand.getSelectedItems();
-            // here and on table select change, call
-            // function to see what buttons to set up.
-       },
+        captureCard: function (e) {
+            dojo.stopEvent(e);
+
+            if (!this.checkAction('capture')) return
+            const selectedCards = this.playerHand.getSelectedItems()
+            if (selectedCards.length != 1) {
+                 this.showMessage(
+                     _('You must select exactly 1 card to capture with'), 'error');
+                return;
+            }
+            const capturedCards = this.table.getSelectedItems()
+                .map(c => c.id)
+            console.log(capturedCards)
+            if (capturedCards.length < 1) {
+                this.showMessage(
+                    _('You must select at least 1 card to capture'), 'error');
+                return;
+            }
+
+            this.takeAction('capture', { 
+                cardId: selectedCards[0].id,
+                capturedCards: capturedCards.join(',')
+            })
+                .then(console.log)
+                .catch(console.error)
+        },
+
+
+        onPlayerHandSelectionChanged: function() {
+            const items = this.playerHand.getSelectedItems();
+                // here and on table select change, call
+                // function to see what buttons to set up.
+        },
 
         ///////////////////////////////////////////////////
         //// Reaction to cometD notifications
@@ -290,16 +322,11 @@ function (dojo, declare) {
 
             // Example 1: standard notification handling
             dojo.subscribe('newCards', this, "notifyNewCards");
-            this.notifqueue.setSynchronous('newCards', 500);
+            this.notifqueue.setSynchronous('newCards', 1000);
             dojo.subscribe('deal', this, "notifyNewDeal");
-            this.notifqueue.setSynchronous('deal', 500);
-            dojo.subscribe('trailCard', this, "notifyTrailCard");
-
-            // Example 2: standard notification handling + tell the user interface to wait
-            //            during 3 seconds after calling the method in order to let the players
-            //            see what is happening in the game.
-            // dojo.subscribe( 'cardPlayed', this, "notif_cardPlayed" );
-            //
+            this.notifqueue.setSynchronous('deal', 1000);
+            dojo.subscribe('trailCard', this, 'notifyTrailCard');
+            dojo.subscribe('captureCards', this, 'notifyCaptureCards')
         },
 
         notifyNewDeal: function ({args}) {
@@ -327,6 +354,38 @@ function (dojo, declare) {
             this.playerHand.removeFromStockById(card.id)
         },
 
+        notifyCaptureCards: function ({ args }) {
+            const playerId = args.player_id
+            // first, play card to table:
+            const card = args.card
+            const suit = card.type
+            const value = card.type_arg
+            const from = playerId == this.player_id ?
+                `myhand_item_${card.id}` : `overall_player_board_${playerId}`
+
+            // slide card from player or hand to table.
+            let foo = this.table.addToStockWithId(this.getCardUniqueId(suit, value), card.id, from)
+            this.playerHand.removeFromStockById(card.id)
+
+            // then: move all the captured and played to the target:
+            const to = `overall_player_board_${playerId}`
+            setTimeout(() => {
+                [card, ...Object.values(args.cards)].forEach(card => {
+                    const suit = card.type
+                    const value = card.type_arg
+                    const cardEl = dojo.place(this.format_block('jstpl_cardontable', {
+                        x: this.cardwidth * (value - 2),
+                        y: this.cardheight * (suit - 1),
+                        player_id: playerId
+                    }), to)
+                    this.placeOnObject(cardEl, `table_item_${card.id}`);                
+                    this.table.removeFromStockById(card.id);
+                    this.slideToObjectAndDestroy(cardEl, to, 500, 100)//.play();
+                })
+            }, 1000)
+        },
+
+
         /*
         Example:
 
@@ -343,3 +402,66 @@ function (dojo, declare) {
         */
    });
 });
+
+
+
+/**
+ * 
+ * @param {number} card 
+ * @param {number[]]} cards 
+ * @returns boolean
+ */
+function matches (card, cards) {
+	function attempt(cards, partialSum, unused) {
+		let noGood = [...unused]
+		let toTry = [...cs]
+
+		for (let next = toTry.pop(); next !== undefined; next = toTry.pop()) {
+			if (next === card) {
+				continue // cards that are equal are always okay
+			} else if (next > card) {
+				return false // there is an unmatchable card, fail the whole thing
+			} else {
+				let sum = partialSum + next
+				if (sum === card) {
+                    // could be part of a valid solution, we have a capturing 
+                    // set that equals the card
+					// put all the no-good cards back into the set to try
+					if (go([...toTry, ...noGood], 0, [])) {
+						return true
+					}
+				} else if (sum < card) {
+					// could be part of a valid solution,  we have a capturing set 
+					// that does not yet equal the card
+					// keep matching with the current sum & no-good set
+					if (go(toTry, sum, noGood)) {
+						return true
+					}
+				}
+
+				// otherwise put it into the no-good set
+				// we will try again later
+				noGood.push(next)
+			}
+		}
+
+		// run out of cards to try, we have suceeded if 
+		// there's nothing left to check
+		return noGood.length === 0 && partialSum === 0
+	}
+
+	const cache = new Map();
+	function go(cards, partialSum, unused) {
+		const key = `${[...cs].sort().join()}|${partialSum}|${[...unused].sort().join()}`;
+		const cached = cache.get(key);
+		if (cached !== undefined) {
+			return cached
+		}
+
+		const result = attempt(cs, partialSum, unused)
+		cache.set(key, result)
+		return result
+	}
+
+    return go(cs, 0, []);
+    
